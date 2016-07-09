@@ -1,0 +1,397 @@
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#define NEVER 0
+#define ALWAYS 1
+#define UNKNOWN 2
+
+#define UP 0
+#define RIGHT 1
+#define DOWN 2
+#define LEFT 3
+#define EDGES 4
+
+using namespace std;
+
+typedef struct tile {
+	char pos;
+	char solved = UNKNOWN;
+	char edges[EDGES] = { UNKNOWN, UNKNOWN, UNKNOWN, UNKNOWN };		//up, right, left, down
+} tile;
+
+/* Recursively simplifies the grid at the inputted location.
+ * Returns false if a tile was found to not be solvable, true otherwise.
+ */
+bool refine_tile(vector<vector<tile>> &grid, int row, int column) {
+
+	tile current = grid[row][column];
+	//If the solvability of the current location's tile is unknown:
+	if (current.solved == UNKNOWN) {
+
+		bool valid;
+		char edge, rot;
+
+		//Store the state of the tile.
+		tile copy = current;
+
+		//Set the current tile's solvability to NEVER.
+		current.solved = NEVER;
+
+		char position = current.pos;
+		//For each possible rotation of the tile:
+		for (int i = 0; i != EDGES; i++) {
+
+			//If every NEVER edge doesn't have a connection to it
+			//and every ALWAYS edge does have a connection to it:
+			valid = true;
+			for (int j = 0; j != EDGES; j++) {
+				edge = (position >> j) % 2;
+				if (edge == 0 && copy.edges[j] == ALWAYS
+					|| edge == 1 && copy.edges[j] == NEVER) {
+					valid = false;
+					break;
+				}
+			}
+			if (valid) {
+
+				//If the current tile's solvability is NEVER:
+				if (current.solved == NEVER) {
+
+					//Set the current tile's solvability to ALWAYS.
+					current.solved = ALWAYS;
+
+					//Set the current tile's position to the rotation value.
+					current.pos = position;
+
+					//Set each edge to NEVER or ALWAYS depending on the tile position.
+					for (int j = 0; j != EDGES; j++) {
+						edge = (position >> j) % 2;
+						if (edge == 0) {
+							current.edges[j] = NEVER;
+						}
+						else {				//if edge == 1
+							current.edges[j] = ALWAYS;
+						}
+					}
+
+				}
+
+				//If the current tile's solvability is ALWAYS:
+				//and it's position doesn't equal the current position:
+				else if (current.solved == ALWAYS && current.pos != position) {
+
+					//Set the current tile's solvability to UNKNOWN.
+					current.solved = UNKNOWN;
+
+					//Set the current tile's position to the copy's position.
+					current.pos = copy.pos;
+
+					//Set every conflicting edge to UNKNOWN.
+					for (int j = 0; j != EDGES; j++) {
+						edge = (position >> j) % 2;
+						if (edge == 0 && current.edges[j] == ALWAYS) {
+							current.edges[j] = UNKNOWN;
+						}
+						else if (edge == 1 && current.edges[j] == NEVER) {
+							current.edges[j] = UNKNOWN;
+						}
+					}
+
+				}
+
+				//If the current tile's solvability is UNKNOWN:
+				else if (current.solved == UNKNOWN) {
+
+					//Set every conflicting edge to UNKNOWN.
+					for (int j = 0; j != EDGES; j++) {
+						edge = (position >> j) % 2;
+						if (edge == 0 && current.edges[j] == ALWAYS) {
+							current.edges[j] = UNKNOWN;
+						}
+						else if (edge == 1 && current.edges[j] == NEVER) {
+							current.edges[j] = UNKNOWN;
+						}
+					}
+
+				}
+
+			}
+
+			rot = position / 8;
+			position %= 8;
+			position *= 2;
+			position += rot;
+		}
+
+		//If no rotation of the tile is valid:
+		if (current.solved == NEVER) {
+
+			//Return false.
+			return false;
+
+		}
+
+		//Add the updated tile to the grid.
+		grid[row][column] = current;
+
+		//For each of the tile's edges:
+		for (int i = 0; i != EDGES; i++) {
+
+			//If the tile's edge state has changed:
+			if (copy.edges[i] != current.edges[i]) {
+
+				//Change the edge state of the adjacent tile.
+				if (i == UP) {
+					grid[row - 1][column].edges[DOWN] = current.edges[UP];
+				}
+				else if (i == RIGHT) {
+					grid[row][column + 1].edges[LEFT] = current.edges[RIGHT];
+				}
+				else if (i == DOWN) {
+					grid[row + 1][column].edges[UP] = current.edges[DOWN];
+				}
+				else if (i == LEFT) {
+					grid[row][column - 1].edges[RIGHT] = current.edges[LEFT];
+				}
+
+			}
+
+		}
+
+		//For each of the tile's edges:
+		for (int i = 0; i != EDGES; i++) {
+
+			//If the tile's edge state has changed:
+			if (copy.edges[i] != current.edges[i]) {
+
+				//Simplify the grid at the neighbor tile's location.
+				int next_row = row;
+				int next_col = column;
+				if (i == UP) {
+					next_row--;
+				}
+				else if (i == RIGHT) {
+					next_col++;
+				}
+				else if (i == DOWN) {
+					next_row++;
+				}
+				else if (i == LEFT) {
+					next_col--;
+				}
+				if (!refine_tile(grid, next_row, next_col)) {
+
+					//Return false if a tile was found not to be solvable.
+					return false;
+
+				}
+
+			}
+
+		}
+
+	}
+
+	//Return true.
+	return true;
+
+}
+
+/* Attempts to solve the grid by process of elimination.
+ * Returns "ALWAYS" if the grid is solved, "UNKNOWN" if the grid is not solved,
+ * or "NEVER" if the grid cannot be solved.
+ */
+char refine_grid(vector<vector<tile>> &grid) {
+
+	//For each tile in the grid:
+	for (int i = 0; i != grid.size(); i++) {
+		for (int j = 0; j != grid[i].size(); j++) {
+
+			//Refine the grid at the location of the current tile in the grid.
+			if (!refine_tile(grid, i, j)) {
+
+				//If a tile was found to be unsolvable, return NEVER.
+				return NEVER;
+
+			}
+
+		}
+	}
+
+	//For each tile in the grid:
+	for (int i = 0; i != grid.size(); i++) {
+		for (int j = 0; j != grid[i].size(); j++) {
+
+			//If the solvability of the tile is UNKNOWN, return UNKNOWN.
+			if (grid[i][j].solved == UNKNOWN) {
+				return UNKNOWN;
+			}
+
+		}
+	}
+
+	//Return ALWAYS.
+	return ALWAYS;
+
+}
+
+/* Returns "true" if the grid is solvable and "false" if the grid is not solvable.
+ * If the grid is solvable, changes "grid" to its solved value.
+ */
+bool solve_grid(vector<vector<tile>> &grid) {
+
+	//Attempt to solve the grid by process of elimination.
+	char solved = refine_grid(grid);
+
+	//If the grid is solved, return true.
+	if (solved == ALWAYS) {
+		return true;
+	}
+
+	//If the grid cannot be solved, return false.
+	else if (solved == NEVER) {
+		return false;
+	}
+
+	//Otherwise:
+	else {
+
+		//Store the current grid state.
+		vector<vector<tile>> temp_grid(grid);
+
+		//Choose an arbitrary unsolved tile in the grid.
+		tile temp;
+		int row = 0;
+		int column = 0;
+		for (row = 0; row != grid.size(); row++) {
+			for (column = 0; column != grid[row].size(); column++) {
+				temp = grid[row][column];
+				if (temp.solved == UNKNOWN) {
+					break;
+				}
+			}
+			if (temp.solved == UNKNOWN) {
+				break;
+			}
+		}
+
+		//For each possible configuration of the unsolved tile:
+		bool valid;
+		char edge, rot;
+		tile copy = temp;
+		for (int i = 0; i != EDGES; i++) {
+			valid = true;
+			for (int j = 0; j != EDGES; j++) {
+				edge = (temp.pos >> j) % 2;
+				if (edge == 0 && copy.edges[j] == ALWAYS
+					|| edge == 1 && copy.edges[j] == NEVER) {
+					valid = false;
+					break;
+				}
+			}
+			if (valid) {
+				temp.solved = ALWAYS;
+				for (int j = 0; j != EDGES; j++) {
+					edge = (temp.pos >> j) % 2;
+					if (edge == 0) {
+						temp.edges[j] = NEVER;
+					}
+					else {				//if edge == 1
+						temp.edges[j] = ALWAYS;
+					}
+				}
+				grid[row][column] = temp;
+				for (int j = 0; j != EDGES; j++) {
+					if (copy.edges[j] != temp.edges[j]) {
+						if (j == UP) {
+							grid[row - 1][column].edges[DOWN] = temp.edges[UP];
+						}
+						else if (j == RIGHT) {
+							grid[row][column + 1].edges[LEFT] = temp.edges[RIGHT];
+						}
+						else if (j == DOWN) {
+							grid[row + 1][column].edges[UP] = temp.edges[DOWN];
+						}
+						else if (j == LEFT) {
+							grid[row][column - 1].edges[RIGHT] = temp.edges[LEFT];
+						}
+					}
+				}
+
+				//If the grid is now solvable (recursive call), return true.
+				if (solve_grid(grid)) {
+					return true;
+				}
+
+				//Otherwise, restore the grid to it's previous state.
+				grid = temp_grid;
+
+			}
+
+			rot = temp.pos / 8;
+			temp.pos %= 8;
+			temp.pos *= 2;
+			temp.pos += rot;
+		}
+
+	}
+
+	//Return false if no solvable grid is found.
+	return false;
+
+}
+
+int main(void) {
+
+	//Take the input grid and store it in a vector of tile vectors.
+	tile temp;
+	vector<tile> tile_vector;
+	vector<vector<tile>> tile_grid;
+	string line;
+	istringstream sstream;
+	int pos;
+	while (getline(cin, line)) {
+		sstream.str(line);
+		while (sstream >> pos) {
+			temp.pos = (char)pos;
+			tile_vector.push_back(temp);
+		}
+		tile_grid.push_back(tile_vector);
+		tile_vector.clear();
+		sstream.clear();
+	}
+
+	//Make initial modifications to the tile grid to account for tiles on the edge of the grid.
+	for (int i = 0; i != tile_grid[0].size(); i++) {
+		tile_grid[0][i].edges[UP] = NEVER;
+		tile_grid[tile_grid.size() - 1][i].edges[DOWN] = NEVER;
+	}
+	for (int i = 0; i != tile_grid.size(); i++) {
+		tile_grid[i][0].edges[LEFT] = NEVER;
+		tile_grid[i][tile_grid[0].size() - 1].edges[RIGHT] = NEVER;
+	}
+
+	//If the tile grid is solvable:
+	if (solve_grid(tile_grid)) {
+
+		//Print the solved tile grid.
+		for (int i = 0; i != tile_grid.size(); i++) {
+			for (int j = 0; j != tile_grid[i].size(); j++) {
+				cout << (int)tile_grid[i][j].pos << " ";
+			}
+			cout << "\n";
+		}
+
+	}
+
+	//Otherwise:
+	else {
+
+		//Print that the tile grid is not solvable.
+		cout << "No closed loop exists.\n";
+
+	}
+	
+}
